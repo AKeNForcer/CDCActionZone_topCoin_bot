@@ -1,0 +1,9 @@
+{
+    "coinmarketcap_api_key": "*****",
+    "limit": 20,
+    "log_file": "CDC ActionZone log.txt",
+    "risk": 2,
+    "risk_safty_factor": 1.1,
+    "binance_api_key": "*****",
+    "binance_api_secret": "*****"
+}
