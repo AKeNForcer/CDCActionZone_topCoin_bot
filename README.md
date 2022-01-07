@@ -10,3 +10,10 @@ the result show the winrate is 30% to 40% and profit factor is 5 to 10 in each p
 <p> Then, use historical price to calculate CDC Action Zone and get buy and sell signal of each pair. </p>
 <p> If there are some buy signal find swing low of lastest 26 bars for stop loss price and use current price as entry price. Then, calculate position size by calculat size ratio which is position size in unit of coins per 1 USDT risk = 1 / (current price - stop loss) then calculate position size = size ratio * risk per trade in USDT. Then, send API request to Binance to create market order and create stop loss order. </p>
 <p> If there are some sell signal get position size from Binance and create market sell order to close position. </p>
+<h2>How to set config</h2>
+<p> coinmarketcap_api_key: api key which can get at https://coinmarketcap.com/api/ </p>
+<p> log_file: name of text file that use to store log </p>
+<p> risk: risk per trade in USDT </p>
+<p> risk_safety_factor: safety factor use to calculate leverage of each trade. higher safety factor will lower the leverage which will lower the risk to unexpected liquidation and use higher cost to open position </p>
+<p> binance_api_key: api key of Binance account </p>
+<p> binance_api_secret: api secret of Binance account </p>
