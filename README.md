@@ -12,6 +12,7 @@ the result show the winrate is 30% to 40% and profit factor is 5 to 10 in each p
 <p> If there are some sell signal get position size from Binance and create market sell order to close position. </p>
 <h2>How to set config</h2>
 <p> coinmarketcap_api_key: api key which can get at https://coinmarketcap.com/api/ </p>
+<p> limit: number of top coins use for trade </p>
 <p> log_file: name of text file that use to store log </p>
 <p> risk: risk per trade in USDT </p>
 <p> risk_safety_factor: safety factor use to calculate leverage of each trade. higher safety factor will lower the leverage which will lower the risk to unexpected liquidation and use higher cost to open position </p>
