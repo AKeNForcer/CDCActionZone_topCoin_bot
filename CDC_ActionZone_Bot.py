@@ -150,13 +150,14 @@ def execute_action(client, action, risk=None, risk_safty_factor=None, pair_preci
             type=client.FUTURE_ORDER_TYPE_MARKET,
             quantity=int((action['size_ratio'] * risk) * (10**precision)) / (10**precision)
         )
-        client.futures_create_order(
+        res1 = client.futures_create_order(
             symbol=pair_symbol, 
             side=client.SIDE_SELL,
             type=client.FUTURE_ORDER_TYPE_STOP_MARKET, 
             closePosition=True, 
             stopPrice=action['stop_loss']
         )
+        return res, res1
     else:
         if pair_symbol in psymbol:
             close_quantity = psymbol[pair_symbol]
@@ -171,8 +172,7 @@ def execute_action(client, action, risk=None, risk_safty_factor=None, pair_preci
             except BinanceAPIException as e:
                 if str(e).strip() != "APIError(code=-2022): ReduceOnly Order is rejected.":
                     raise e
-    #print("Result:", res)
-    return res
+        return res
 
 def clear_sl(client, psymbol):
     all_res = []
@@ -193,10 +193,11 @@ def show_position(positions):
         'liquidationPrice', 'leverage', 'maxNotionalValue', 'marginType',
         'isolatedMargin', 'isAutoAddMargin', 'positionSide', 'notional',
         'isolatedWallet', 'updateTime']
-    )[["symbol", "positionAmt", "entryPrice", "markPrice", "unRealizedProfit", "liquidationPrice", "leverage", "marginType", "isolatedWallet"]])
+    )[["symbol", "positionAmt", "entryPrice", "markPrice", "unRealizedProfit", "liquidationPrice", "leverage", "marginType", "isolatedWallet"]].to_string())
 
 with open("config.json", "r") as f:
     config = json.load(f)
+    GMT_timezone = config["GMT_timezone"]
     coinmarketcap_api_key = config["coinmarketcap_api_key"]
     limit = config["limit"]
     log_file = config["log_file"]
@@ -224,7 +225,8 @@ is_refresh = False
 while True:
     now = datetime.datetime.now()
     h = int(now.strftime("%H"))
-    if h == 7 and not is_refresh:
+    s = int(now.strftime("%S"))
+    if h == GMT_timezone and s == 15 and not is_refresh:
         positions, psymbol = get_openning_position(client)
         coins = get_top_coins(coinmarketcap_api_key)
         symbols = get_binance_symbol()
@@ -237,12 +239,13 @@ while True:
         show_position(positions)
         for action in actions:
             log(log_file, "action res:\n", execute_action(client, action, risk, risk_safty_factor, pair_precision, psymbol))
+        positions, psymbol = get_openning_position(client)
         csl_res = clear_sl(client, psymbol)
         positions, psymbol = get_openning_position(client)
         if len(actions) > 0 or len(csl_res) > 0:
             show_balance(client)
             show_position(positions)
         log(log_file, "Summary:", get_summary(positions))
-    elif h == 8:
+    elif h == (GMT_timezone+1)%24:
         is_refresh = False
     time.sleep(1)
