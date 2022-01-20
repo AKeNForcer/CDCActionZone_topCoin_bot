@@ -48,27 +48,34 @@ def get_trade_coins(coins, symbols, limit, only_symbol=False):
     return trade_coins
 
 def get_signal(symbol, tf="1d", prd1=12, prd2=26):
-    FUTURE_URL = 'https://fapi.binance.com/fapi/v1'
-    params = {
-        'symbol': symbol+'USDT',
-        'limit': 500,
-        'interval': tf
-    }
-    r = requests.get(FUTURE_URL + '/klines', params=params)
-    df = pd.DataFrame(r.json(), columns=['Open_time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close_time', 'Quote_asset_volume',
-    'Number_of_trades', 'Taker_buy_base_asset_volume', 'Taker_buy_quote_asset_volume', 'Ignore']).drop(columns=['Close_time', 'Quote_asset_volume',
-    'Number_of_trades', 'Taker_buy_base_asset_volume', 'Taker_buy_quote_asset_volume', 'Ignore'])
-    df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype('double')
-    ema1 = df["Close"].ewm(span=prd1, adjust=False).mean()
-    ema2 = df["Close"].ewm(span=prd2, adjust=False).mean()
-    ema1_0, ema1_1 = ema1[df.shape[0]-2], ema1[df.shape[0]-3]
-    ema2_0, ema2_1 = ema2[df.shape[0]-2], ema2[df.shape[0]-3]
-    bullish_signal = (ema1_0 >= ema2_0) and (ema1_1 < ema2_1)
-    bearish_signal = (ema1_0 <= ema2_0) and (ema1_1 > ema2_1)
-    swing_low = df["Low"][(df["Low"] < df["Low"].shift(1)) & (df["Low"] < df["Low"].shift(-1))]
-    swing_low = swing_low[swing_low.index >= df.shape[0]-prd2-1].min()
-    current_price = df["Close"][df.shape[0]-1]
-    size_ratio = (1 / (current_price - swing_low))
+    try:
+        FUTURE_URL = 'https://fapi.binance.com/fapi/v1'
+        params = {
+            'symbol': symbol+'USDT',
+            'limit': 500,
+            'interval': tf
+        }
+        r = requests.get(FUTURE_URL + '/klines', params=params)
+        df = pd.DataFrame(r.json(), columns=['Open_time', 'Open', 'High', 'Low', 'Close', 'Volume', 'Close_time', 'Quote_asset_volume',
+        'Number_of_trades', 'Taker_buy_base_asset_volume', 'Taker_buy_quote_asset_volume', 'Ignore']).drop(columns=['Close_time', 'Quote_asset_volume',
+        'Number_of_trades', 'Taker_buy_base_asset_volume', 'Taker_buy_quote_asset_volume', 'Ignore'])
+        df[['Open', 'High', 'Low', 'Close', 'Volume']] = df[['Open', 'High', 'Low', 'Close', 'Volume']].astype('double')
+        ema1 = df["Close"].ewm(span=prd1, adjust=False).mean()
+        ema2 = df["Close"].ewm(span=prd2, adjust=False).mean()
+        ema1_0, ema1_1 = ema1[df.shape[0]-2], ema1[df.shape[0]-3]
+        ema2_0, ema2_1 = ema2[df.shape[0]-2], ema2[df.shape[0]-3]
+        bullish_signal = (ema1_0 >= ema2_0) and (ema1_1 < ema2_1)
+        bearish_signal = (ema1_0 <= ema2_0) and (ema1_1 > ema2_1)
+        swing_low = df["Low"][(df["Low"] < df["Low"].shift(1)) & (df["Low"] < df["Low"].shift(-1))]
+        swing_low = swing_low[swing_low.index >= df.shape[0]-prd2-1].min()
+        current_price = df["Close"][df.shape[0]-1]
+        size_ratio = (1 / (current_price - swing_low))
+    except Exception as e:
+        print(params)
+        print(symbol)
+        print(df)
+        print(psymbol)
+        raise e
     return bullish_signal, bearish_signal, size_ratio, swing_low, current_price
 
 def log(log_file, *args):
@@ -103,7 +110,7 @@ def get_openning_position(client):
     all_positions = client.futures_position_information()
     for position in all_positions:
         if float(position['positionAmt']) > 0:
-            psymbol[position['symbol']] = float(position['positionAmt'])
+            psymbol[position['symbol'][:-4]] = float(position['positionAmt'])
             for key, val in position.items():
                 if type(val) == type(str()):
                     if val.isdigit():
@@ -144,23 +151,33 @@ def execute_action(client, action, risk=None, risk_safty_factor=None, pair_preci
             if str(e) != "APIError(code=-4046): No need to change margin type.":
                 raise e
         client.futures_change_leverage(symbol=pair_symbol, leverage=int(1 / (risk_safty_factor * (1-action['stop_loss']/action['current_price']))))
-        res = client.futures_create_order(
-            symbol=pair_symbol,
-            side=client.SIDE_BUY,
-            type=client.FUTURE_ORDER_TYPE_MARKET,
-            quantity=int((action['size_ratio'] * risk) * (10**precision)) / (10**precision)
-        )
-        res1 = client.futures_create_order(
-            symbol=pair_symbol, 
-            side=client.SIDE_SELL,
-            type=client.FUTURE_ORDER_TYPE_STOP_MARKET, 
-            closePosition=True, 
-            stopPrice=action['stop_loss']
-        )
+        quantity = int((action['size_ratio'] * risk) * (10**precision)) / (10**precision)
+        if quantity > 0:
+            try:
+                res = client.futures_create_order(
+                    symbol=pair_symbol,
+                    side=client.SIDE_BUY,
+                    type=client.FUTURE_ORDER_TYPE_MARKET,
+                    quantity=quantity
+                )
+                res1 = client.futures_create_order(
+                    symbol=pair_symbol, 
+                    side=client.SIDE_SELL,
+                    type=client.FUTURE_ORDER_TYPE_STOP_MARKET, 
+                    closePosition=True, 
+                    stopPrice=action['stop_loss']
+                )
+            except BinanceAPIException as e:
+                log(log_file, "buy error", e)
+                res = "buy error"
+                res1 = None
+        else:
+            res = f"{pair_symbol} quantity is 0"
+            res1 = None
         return res, res1
     else:
-        if pair_symbol in psymbol:
-            close_quantity = psymbol[pair_symbol]
+        if action['symbol'] in psymbol:
+            close_quantity = psymbol[action['symbol']]
             try:
                 res = client.futures_create_order(
                     symbol=pair_symbol,
@@ -179,7 +196,7 @@ def clear_sl(client, psymbol):
     open_orders = client.futures_get_open_orders()
     for order in open_orders:
         if order['type'] == 'STOP_MARKET':
-            if order['symbol'] not in psymbol:
+            if order['symbol'][:-4] not in psymbol:
                 all_res.append(client.futures_cancel_all_open_orders(symbol=order['symbol']))
     return all_res
 
@@ -220,6 +237,11 @@ coins = get_top_coins(coinmarketcap_api_key)
 symbols = get_binance_symbol()
 trade_coins = set(get_trade_coins(coins, symbols, limit, only_symbol=True)).union(set(psymbol))
 log(log_file, "Top Coins:\n", trade_coins)
+csl_res = clear_sl(client, psymbol)
+if len(csl_res) > 0:
+    show_balance(client)
+    show_position(positions)
+print("psymbol:", psymbol)
 
 is_refresh = False
 while True:
@@ -246,6 +268,7 @@ while True:
             show_balance(client)
             show_position(positions)
         log(log_file, "Summary:", get_summary(positions))
+        print("psymbol:", psymbol)
     elif h == (GMT_timezone+1)%24:
         is_refresh = False
     time.sleep(1)
